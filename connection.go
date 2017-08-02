@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"io"
 	"net"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Connection struct {
@@ -14,7 +16,7 @@ type Connection struct {
 	reader *bufio.Reader
 	writer *bufio.Writer
 
-	debugBuf bytes.Buffer
+	debugBuf *bytes.Buffer
 }
 
 type ConnectionParameter struct {
@@ -30,7 +32,8 @@ type ConnectionParameter struct {
 
 func NewConnection(param ConnectionParameter) *Connection {
 	return &Connection{
-		param: param,
+		param:    param,
+		debugBuf: new(bytes.Buffer),
 	}
 }
 
@@ -43,14 +46,20 @@ func (c *Connection) Open() error {
 		return err
 	}
 
-	if c.IsDebugPacket == true {
-		c.reader = bufio.NewReader(io.TeeReader(c.conn, &c.debugBuf))
+	if c.param.IsDebugPacket == true {
+		c.reader = bufio.NewReader(io.TeeReader(c.conn, c.debugBuf))
 	} else {
 		c.reader = bufio.NewReader(c.conn)
 	}
 
-	c.readInitPacket()
+	//
+	err = c.readInitPacket()
 
+	if err != nil {
+		return err
+	}
+
+	//
 	return nil
 }
 
@@ -58,9 +67,20 @@ func (c *Connection) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Connection) readPacket() {
-}
+func (c *Connection) readInitPacket() error {
+	var packetHeader *PacketHeader
+	var err error
 
-func (c *Connection) readInitPacket() {
-	c.readPacket()
+	packetHeader, err = ReadPacketHeader(c.reader)
+
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(packetHeader)
+	spew.Dump(c.debugBuf.Bytes())
+	c.debugBuf.Reset()
+
+	//
+	return nil
 }
