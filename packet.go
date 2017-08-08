@@ -7,7 +7,7 @@ import (
 
 type PacketHeader struct {
 	Len uint64
-	Seq uint8
+	Seq uint8 // sequence number
 }
 
 func ReadPacketHeader(rd *bufio.Reader) (*PacketHeader, error) {
@@ -33,7 +33,7 @@ func ReadPacket(rd *bufio.Reader, byteArr []byte) error {
 	for i := 0; i < len(byteArr); i++ {
 		numOfBytes, err = rd.Read(byteArr[i:])
 
-		fmt.Printf("Debug Read: %d\n", numOfBytes)
+		fmt.Printf("====== Debug Read: %d\n", numOfBytes)
 
 		if err != nil {
 			return err
@@ -43,6 +43,11 @@ func ReadPacket(rd *bufio.Reader, byteArr []byte) error {
 	}
 
 	return nil
+}
+
+func IgnoreBytes(rd *bufio.Reader, n uint64) error {
+	byteArr := make([]byte, n)
+	return ReadPacket(rd, byteArr)
 }
 
 func UnpackNumber(byteArr []byte, n uint8) uint64 {
