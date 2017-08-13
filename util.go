@@ -12,6 +12,9 @@ import (
 )
 
 // Encrypt password using 4.1+ method
+//
+// SHA1(password) XOR SHA1("20-bytes random data from server" <concat> SHA1(SHA1(password)))
+//
 // Reference:
 // https://github.com/go-sql-driver/mysql/blob/master/utils.go
 func scramblePassword(scramble []byte, password []byte) []byte {
