@@ -21,6 +21,7 @@ type ClientFlags uint32
 // Reference:
 // https://github.com/MariaDB/mariadb-connector-c/blob/master/include/mariadb_com.h
 // https://github.com/google/mysql/blob/master/include/mysql_com.h
+// http://boytnt.blog.51cto.com/966121/1279318
 const (
 	CLIENT_LONG_PASSWORD     ClientFlags = 1       /* new more secure passwords */
 	CLIENT_FOUND_ROWS                    = 2       /* Found instead of affected rows */
