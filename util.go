@@ -14,7 +14,7 @@ import (
 // Encrypt password using 4.1+ method
 // Reference:
 // https://github.com/go-sql-driver/mysql/blob/master/utils.go
-func scramblePassword(scramble, password []byte) []byte {
+func scramblePassword(scramble []byte, password []byte) []byte {
 	if len(password) == 0 {
 		return nil
 	}

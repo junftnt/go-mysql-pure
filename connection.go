@@ -155,6 +155,14 @@ func (c *Connection) Open() error {
 	c.debugBuf.Reset()
 
 	//
+	err = c.readResult()
+
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(c.debugBuf.Bytes())
+	c.debugBuf.Reset()
 
 	//
 	return nil
@@ -182,6 +190,7 @@ func (c *Connection) readInitPacket() error {
 		return errors.New("Unexpected Sequence Number")
 	}
 
+	spew.Printf("=== packetHeader\n")
 	spew.Dump(packetHeader)
 
 	// ProtocolVersion [1 byte]
@@ -191,6 +200,7 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== ProtocolVersion\n")
 	spew.Dump(c.ProtocolVersion)
 
 	// ServerVersion [null terminated string]
@@ -200,6 +210,7 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== ServerVersion\n")
 	spew.Dump(c.ServerVersion)
 
 	// ConnectionID [4 bytes]
@@ -209,6 +220,7 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== ConnectionID\n")
 	spew.Dump(c.ConnectionID)
 
 	// ScramblePart1 [8 bytes]
@@ -220,6 +232,7 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== ScramblePart1\n")
 	spew.Dump(c.ScramblePart1)
 
 	// Reserved byte [1 byte]
@@ -258,13 +271,13 @@ func (c *Connection) readInitPacket() error {
 	}
 
 	// LenOfScramblePart2 [1 byte]
-	err = binary.Read(c.reader, binary.LittleEndian, &c.LenOfScramblePart2)
+	//err = binary.Read(c.reader, binary.LittleEndian, &c.LenOfScramblePart2)
 
-	if err != nil {
-		return err
-	}
+	//if err != nil {
+	//	return err
+	//}
 
-	spew.Dump(c.LenOfScramblePart2)
+	//spew.Dump(c.LenOfScramblePart2)
 
 	// PLUGIN_AUTH [1 byte]
 	// Filler [6 bytes]
@@ -287,7 +300,11 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== ScramblePart2\n")
 	spew.Dump(c.ScramblePart2)
+
+	// ScramblePart2 0x00
+	IgnoreBytes(c.reader, 1)
 
 	// AuthenticationPluginName [null terminated string]
 	c.AuthenticationPluginName, err = c.reader.ReadString('\x00')
@@ -296,6 +313,7 @@ func (c *Connection) readInitPacket() error {
 		return err
 	}
 
+	spew.Printf("=== AuthenticationPluginName\n")
 	spew.Dump(c.AuthenticationPluginName)
 	spew.Dump([]byte(c.AuthenticationPluginName))
 
@@ -316,30 +334,33 @@ func (c *Connection) sendAuth() error {
 	clientFlags += CLIENT_MULTI_STATEMENTS
 	clientFlags += CLIENT_MULTI_RESULTS
 
-	// packet length + sequence number [4 bytes]
 	// client capabilities [4 bytes]
 	// max packet size [4 bytes]
 	// client character collation [1 byte]
 	// reserved [19 bytes]
 	// reserved [4 bytes]
 	// username [null terminated string]
-	// ignore [1 byte]
-	// password [null terminated string]
+	// password length [1 byte]
+	// password [fix, length is indicated by previous field]
 	cipher := c.ScramblePart1
 	cipher = append(cipher, c.ScramblePart2...)
+
 	password := scramblePassword(cipher, []byte(c.param.Password))
 
-	byteLen := 4 + 4 + 4 + 1 + 19 + 4 + len(c.param.Username+string('\x00')) + 1 + len(string(password)+string('\x00'))
+	byteLen := 4 + 4 + 1 + 19 + 4 + (len(c.param.Username) + 1) + (1 + len(password))
 
 	// database name [null terminated string]
-	if n := len(c.param.DBName + string('\x00')); n > 0 {
+	if n := len(c.param.DBName); n > 0 {
 		clientFlags += CLIENT_CONNECT_WITH_DB
-		byteLen += n
+		byteLen += (n + 1)
 	}
+
+	// Assume native client during response [null terminated string]
+	byteLen += (len("mysql_native_password") + 1)
 
 	//
 	pos := 0
-	byteArr := make([]byte, byteLen)
+	byteArr := make([]byte, byteLen+4)
 
 	// packet length + sequence number [4 bytes]
 	byteArr[0] = byte(byteLen)
@@ -372,7 +393,7 @@ func (c *Connection) sendAuth() error {
 	pos += 1
 
 	// ignore [1 byte]
-	pos += 1
+	//pos += 1
 
 	// password [length encoded integer]
 	byteArr[pos] = byte(len(password))
@@ -381,6 +402,16 @@ func (c *Connection) sendAuth() error {
 	// password [null terminated string]
 	// TODO: password type double check
 	pos += copy(byteArr[pos:], password)
+
+	// database name [null terminated string]
+	pos += copy(byteArr[pos:], c.param.DBName)
+	byteArr[pos] = 0x00
+	pos += 1
+
+	// Assume native client during response [null terminated string]
+	pos += copy(byteArr[pos:], "mysql_native_password")
+	byteArr[pos] = 0x00
+	pos += 1
 
 	//
 	_, err = c.writer.Write(byteArr[0:pos])
@@ -391,6 +422,30 @@ func (c *Connection) sendAuth() error {
 
 	//
 	err = c.writer.Flush()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Connection) readResult() error {
+	var packetHeader *PacketHeader
+	var err error
+
+	//
+	packetHeader, err = ReadPacketHeader(c.reader)
+
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(packetHeader)
+
+	//
+	test := make([]byte, 1)
+	err = ReadPacket(c.reader, test)
 
 	if err != nil {
 		return err
